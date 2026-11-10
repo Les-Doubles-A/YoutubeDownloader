@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>YouTube Downloader</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    body {
+      width: 340px;
+      margin: 0;
+      font-family: Roboto, 'Segoe UI', Arial, sans-serif;
+      background: #17171a;
+      color: #f2f2f2;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 16px;
+      background: linear-gradient(135deg, #ff3b3b, #c81d1d);
+    }
+    header img { width: 22px; height: 22px; }
+    header h1 {
+      font-size: 15px;
+      margin: 0;
+      font-weight: 700;
+    }
+    .content { padding: 14px 16px; }
+    .status {
+      font-size: 12.5px;
+      color: #aaa;
+      margin-bottom: 10px;
+    }
+    button.main-btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 10px;
+      background: #2b2b2e;
+      color: #f2f2f2;
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 8px;
+      transition: background 0.15s ease;
+    }
+    button.main-btn:hover { background: #3a3a3e; }
+    h2 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #9a9a9a;
+      margin: 16px 0 8px;
+    }
+    #history {
+      max-height: 300px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .history-item {
+      background: #232326;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    .history-item .title {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .history-item .meta {
+      color: #999;
+      display: flex;
+      justify-content: space-between;
+      margin-top: 2px;
+    }
+    .history-item .bar {
+      height: 4px;
+      border-radius: 2px;
+      background: #3a3a3e;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .history-item .bar > div {
+      height: 100%;
+      background: linear-gradient(90deg, #ff3b3b, #c81d1d);
+      transition: width 0.2s ease;
+    }
+    .history-item .stage { color: #999; margin-top: 3px; font-size: 11.5px; }
+    .history-item .actions { display: flex; gap: 6px; margin-top: 6px; }
+    .history-item .actions button {
+      background: #2f2f33;
+      color: #f2f2f2;
+      border: none;
+      border-radius: 6px;
+      padding: 3px 9px;
+      font-family: inherit;
+      font-size: 11.5px;
+      cursor: pointer;
+    }
+    .history-item .actions button:hover { background: #3f3f44; }
+    .history-item .err { color: #ff8a8a; margin-top: 3px; font-size: 11.5px; word-break: break-word; }
+    #summary { font-size: 12px; color: #ffb74d; margin-bottom: 8px; display: none; }
+    .status-annulé { color: #aaa; }
+    .status-enattente { color: #9ec9ff; }
+    .status-terminé { color: #4caf50; }
+    .status-erreur { color: #ff6b6b; }
+    .status-encours { color: #ffb74d; }
+    footer {
+      padding: 10px 16px;
+      text-align: center;
+    }
+    footer a {
+      color: #ccc;
+      font-size: 12px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon48.png" alt="logo" />
+    <h1>YouTube Downloader</h1>
+  </header>
+  <div class="content">
+    <div id="summary"></div>
+    <div class="status" id="status">Ouvrez une vidéo YouTube pour télécharger.</div>
+    <button class="main-btn" id="open-options">⚙ Ouvrir les options</button>
+    <button class="main-btn" id="clear-history">🗑 Effacer l'historique</button>
+    <h2>Historique récent</h2>
+    <div id="history"></div>
+  </div>
+  <footer>
+    <a href="#" id="footer-link">com.youtube.downloader — Native Host requis</a>
+  </footer>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Options - YouTube Downloader</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Roboto, 'Segoe UI', Arial, sans-serif;
+      background: #121214;
+      color: #f2f2f2;
+      padding: 30px;
+    }
+    .wrap { max-width: 640px; margin: 0 auto; }
+    h1 {
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card {
+      background: #1c1c1e;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      color: #bbb;
+      margin-bottom: 6px;
+      margin-top: 14px;
+    }
+    label:first-child { margin-top: 0; }
+    input[type=text], select {
+      width: 100%;
+      padding: 9px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: #232326;
+      color: #f2f2f2;
+      font-family: inherit;
+      font-size: 13px;
+    }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .checkbox-row input { width: 16px; height: 16px; }
+    button.save-btn {
+      background: linear-gradient(135deg, #ff3b3b, #c81d1d);
+      border: none;
+      color: white;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .inline { display: flex; gap: 8px; }
+    .inline input { flex: 1; }
+    button.secondary {
+      background: #2f2f33;
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #f2f2f2;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button.secondary:hover { background: #3a3a3e; }
+    #test-result { font-size: 12.5px; margin-top: 10px; line-height: 1.6; white-space: pre-wrap; }
+    .ok { color: #4caf50; }
+    .ko { color: #ff6b6b; }
+    .hint { font-size: 11.5px; color: #888; margin-top: 4px; }
+    #saved-msg {
+      color: #4caf50;
+      font-size: 13px;
+      margin-left: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>⚙ Options — YouTube Downloader</h1>
+
+    <div class="card">
+      <label>Dossier de téléchargement</label>
+      <div class="inline">
+        <input type="text" id="downloadFolder" placeholder="C:\Users\vous\Downloads\YoutubeDownloader" />
+        <button type="button" class="secondary" id="pick-folder">Parcourir...</button>
+      </div>
+      <div class="hint">Chemin absolu sur la machine Windows où sont enregistrés les fichiers.</div>
+
+      <div class="row">
+        <div>
+          <label>Chemin de yt-dlp.exe</label>
+          <input type="text" id="ytDlpPath" placeholder="C:\Tools\yt-dlp\yt-dlp.exe" />
+        </div>
+        <div>
+          <label>Chemin de ffmpeg.exe</label>
+          <input type="text" id="ffmpegPath" placeholder="C:\Tools\ffmpeg\bin\ffmpeg.exe" />
+        </div>
+      </div>
+
+      <button type="button" class="secondary" id="test-config" style="margin-top:14px;">Tester la configuration</button>
+      <div id="test-result"></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Format vidéo par défaut</label>
+          <select id="defaultVideoFormat">
+            <option value="mp4">MP4</option>
+            <option value="mkv">MKV</option>
+            <option value="webm">WebM</option>
+          </select>
+        </div>
+        <div>
+          <label>Format audio par défaut</label>
+          <select id="defaultAudioFormat">
+            <option value="mp3">MP3</option>
+            <option value="m4a">M4A</option>
+            <option value="flac">FLAC</option>
+            <option value="wav">WAV</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Qualité préférée</label>
+      <select id="preferredQuality">
+        <option value="best">Meilleure qualité</option>
+        <option value="4320p">4320p</option>
+        <option value="2160p">2160p</option>
+        <option value="1440p">1440p</option>
+        <option value="1080p">1080p</option>
+        <option value="720p">720p</option>
+        <option value="480p">480p</option>
+        <option value="360p">360p</option>
+      </select>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="autoDownload" />
+        <label style="margin:0;">Téléchargement automatique avec la qualité préférée (sans afficher le menu)</label>
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="includeMetadataByDefault" />
+        <label style="margin:0;">Inclure les infos complémentaires par défaut (miniature, titre, auteur, description, chapitres)</label>
+      </div>
+      <div class="hint">
+        Coche par défaut la case « Infos complémentaires » dans le menu de téléchargement. Disponible pour la vidéo comme pour l'audio.
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="autoUpdateYtDlp" />
+        <label style="margin:0;">Mettre à jour yt-dlp automatiquement (au plus 1 fois par jour)</label>
+      </div>
+      <div class="hint">
+        YouTube change régulièrement ses protections anti-bot ; une version de yt-dlp périmée
+        provoque souvent des erreurs « 403 Forbidden » même avec des cookies valides. Avec cette
+        option, l'hôte lance « yt-dlp -U » automatiquement avant un téléchargement, au maximum
+        une fois par 24h pour ne pas ralentir chaque téléchargement.
+      </div>
+
+      <label>Cookies de navigateur (authentification YouTube)</label>
+      <select id="cookiesFromBrowser">
+        <option value="none">Ne pas utiliser de cookies</option>
+        <option value="chrome">Chrome</option>
+        <option value="edge">Edge</option>
+        <option value="firefox">Firefox</option>
+        <option value="brave">Brave</option>
+        <option value="opera">Opera</option>
+        <option value="vivaldi">Vivaldi</option>
+      </select>
+      <div class="hint">
+        YouTube demande de plus en plus souvent une preuve de connexion avant d'autoriser le
+        téléchargement réel du flux (erreurs « 403 Forbidden » ou « Sign in to confirm you're
+        not a bot »), même avec yt-dlp à jour. Sélectionner un navigateur ici permet à yt-dlp de
+        réutiliser les cookies de votre session déjà connectée sur YouTube dans ce navigateur.
+        Le navigateur doit être fermé au moment du téléchargement pour que ses cookies soient
+        accessibles.
+      </div>
+    </div>
+
+    <div class="card">
+      <label>Modèle de nommage</label>
+      <input type="text" id="filenameTemplate" placeholder="%(title)s.%(ext)s" />
+      <div class="hint">
+        Variables disponibles : %(title)s, %(uploader)s, %(upload_date)s, %(playlist_index)s, %(id)s, %(ext)s
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Langues des sous-titres</label>
+          <input type="text" id="subtitleLangs" placeholder="all" />
+          <div class="hint">« all » pour tout, ou une liste séparée par des virgules (ex. fr,en).</div>
+        </div>
+        <div>
+          <label>Format des sous-titres</label>
+          <select id="subtitleFormat">
+            <option value="">Format d'origine</option>
+            <option value="srt">SRT</option>
+            <option value="vtt">VTT</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Téléchargements simultanés</label>
+      <select id="maxConcurrent">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+      <div class="hint">Les téléchargements au-delà de cette limite attendent dans la file.</div>
+    </div>
+
+    <div class="card">
+      <label>SponsorBlock (segments sponsorisés, intros, etc.)</label>
+      <select id="sponsorBlockMode">
+        <option value="off">Désactivé</option>
+        <option value="remove">Retirer les segments du fichier</option>
+        <option value="mark">Marquer en chapitres (sans couper)</option>
+      </select>
+      <div class="hint">
+        Utilise la base communautaire SponsorBlock via yt-dlp (FFmpeg requis). Ne concerne que les
+        vidéos déjà annotées. Le découpage est plus lent. S'applique aux vidéos et à l'audio.
+      </div>
+      <div id="sb-categories" style="margin-top:10px;">
+        <div class="checkbox-row"><input type="checkbox" data-sb="sponsor" /><label style="margin:0;">Sponsor</label></div>
+        <div class="checkbox-row"><input type="checkbox" data-sb="selfpromo" /><label style="margin:0;">Auto-promotion</label></div>
+        <div class="checkbox-row"><input type="checkbox" data-sb="intro" /><label style="margin:0;">Intro</label></div>
+        <div class="checkbox-row"><input type="checkbox" data-sb="outro" /><label style="margin:0;">Outro / cartons de fin</label></div>
+        <div class="checkbox-row"><input type="checkbox" data-sb="interaction" /><label style="margin:0;">Rappel d'interaction (like, abonnement)</label></div>
+        <div class="checkbox-row"><input type="checkbox" data-sb="preview" /><label style="margin:0;">Aperçu / récapitulatif</label></div>
+        <div class="checkbox-row"><input type="checkbox" data-sb="filler" /><label style="margin:0;">Remplissage (hors sujet)</label></div>
+        <div class="checkbox-row"><input type="checkbox" data-sb="music_offtopic" /><label style="margin:0;">Musique hors sujet</label></div>
+      </div>
+    </div>
+
+    <button class="save-btn" id="save">Enregistrer</button>
+    <span id="saved-msg">✔ Options enregistrées</span>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>

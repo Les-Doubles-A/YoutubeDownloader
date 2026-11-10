@@ -1,0 +1,9 @@
+{
+  "name": "com.youtube.downloader",
+  "description": "YouTube Downloader Native Host",
+  "path": "DownloaderHost.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://REPLACE_WITH_EXTENSION_ID/"
+  ]
+}
