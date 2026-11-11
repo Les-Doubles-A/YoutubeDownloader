@@ -174,6 +174,17 @@ function requestFormats(url, ytDlpPath, cookiesFromBrowser) {
 // ---------------------------------------------------------------------------
 // Construction de la requête de téléchargement à partir du message de l'UI.
 // ---------------------------------------------------------------------------
+// Chaîne ou playlist entière : chaque vidéo est rangée dans un sous-dossier (nom de la chaîne
+// ou titre de la playlist), sauf si le modèle de nom contient déjà un dossier.
+function folderTemplate(message, options) {
+  const template = String(options.filenameTemplate || "%(title)s.%(ext)s");
+  if (template.includes("/") || template.includes("\\")) return template;
+  if (message.channelMode) return "%(uploader,channel)s/" + template;
+  const mode = message.playlistMode || "single";
+  if (mode === "full" || mode === "fromCurrent") return "%(playlist_title,playlist|Playlist)s/" + template;
+  return template;
+}
+
 function buildPayload(message, options) {
   return {
     url: message.url,
@@ -186,9 +197,7 @@ function buildPayload(message, options) {
     outputDir: options.downloadFolder,
     ytDlpPath: options.ytDlpPath,
     ffmpegPath: options.ffmpegPath,
-    filenameTemplate: message.channelMode && !String(options.filenameTemplate).includes("/") && !String(options.filenameTemplate).includes("\\")
-      ? "%(uploader,channel)s/" + options.filenameTemplate
-      : options.filenameTemplate,
+    filenameTemplate: folderTemplate(message, options),
     playlistMode: message.playlistMode || "single", // "single" | "full" | "fromCurrent"
     // Téléchargement de toute une chaîne : sous-dossier par chaîne, archive de reprise, limite.
     channelMode: !!message.channelMode,
@@ -312,9 +321,11 @@ function runJob({ requestId, payload, tabId }) {
       if (port) { try { port.disconnect(); } catch (e) {} }
 
       if (kind === "complete") {
-        broadcast({ type: "download-complete", requestId, tabId, filePath: data.filePath });
+        const skipped = Number(data.skipped) || 0;
+        const total = Number(data.total) || 0;
+        broadcast({ type: "download-complete", requestId, tabId, filePath: data.filePath, skipped, total });
         updateHistoryEntry(requestId, {
-          status: "terminé", percent: 100, stage: "", filePath: data.filePath, finishedAt: Date.now()
+          status: "terminé", percent: 100, stage: "", filePath: data.filePath, skipped, total, finishedAt: Date.now()
         });
       } else if (kind === "cancelled") {
         broadcast({ type: "download-cancelled", requestId, tabId });
@@ -345,7 +356,7 @@ function runJob({ requestId, payload, tabId }) {
           updateHistoryEntry(requestId, { percent: msg.percent, stage: msg.stage || "" });
           break;
         case "complete":
-          finish("complete", { filePath: msg.filePath });
+          finish("complete", { filePath: msg.filePath, skipped: msg.skipped, total: msg.total });
           break;
         case "cancelled":
           finish("cancelled");
@@ -407,6 +418,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       const requestId = await enqueueDownload({ action: "download", ...entry.retry }, undefined);
       sendResponse({ ok: true, requestId });
+    });
+    return true;
+  }
+
+  if (message.action === "forgetArchive") {
+    // Retire une vidéo (videoId) ou toutes celles d'une playlist/chaîne (url) de l'archive des
+    // vidéos déjà téléchargées, pour pouvoir les retélécharger.
+    getOptions().then((options) => {
+      const scope = message.scope === "playlist" ? "playlist" : "video";
+      nativeRequest(
+        {
+          action: "forgetArchive",
+          scope,
+          videoId: message.videoId || "",
+          url: message.url || "",
+          ytDlpPath: options.ytDlpPath,
+          cookiesFromBrowser: options.cookiesFromBrowser || ""
+        },
+        "archiveForgotten",
+        scope === "playlist" ? 300000 : 15000
+      ).then(sendResponse);
     });
     return true;
   }

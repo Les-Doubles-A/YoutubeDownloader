@@ -37,6 +37,13 @@ function renderSummary(history) {
     `${running.length} en cours, ${waiting.length} en attente - progression globale ${avg}%`;
 }
 
+// Vidéos ignorées car déjà présentes dans l'archive des téléchargements.
+function skippedText(item) {
+  const total = Math.max(item.total || 0, item.skipped);
+  if (total <= 1) return "Déjà téléchargée : ignorée.";
+  return `${total - item.skipped} nouvelle(s), ${item.skipped} déjà téléchargée(s) ignorée(s)`;
+}
+
 function buildItem(item) {
   const label = item.title || item.url;
   const div = document.createElement("div");
@@ -54,6 +61,7 @@ function buildItem(item) {
     ${showBar ? `<div class="bar"><div style="width:${percent}%"></div></div>` : ""}
     ${showBar && item.stage ? `<div class="stage">${escapeHtml(item.stage)}</div>` : ""}
     ${item.status === "erreur" && item.error ? `<div class="err">${escapeHtml(item.error)}</div>` : ""}
+    ${item.status === "terminé" && item.skipped > 0 ? `<div class="stage">${escapeHtml(skippedText(item))}</div>` : ""}
     <div class="actions"></div>
   `;
 

@@ -1,7 +1,7 @@
 ﻿; Installeur Inno Setup de YoutubeDownloader. Compilation : iscc installer\YoutubeDownloader.iss
-; Le setup est cree dans installer\Output\YoutubeDownloader-Setup-1.1.0.exe
+; Le setup est cree dans installer\Output\YoutubeDownloader-Setup-1.2.0.exe
 #define MyAppName "YoutubeDownloader"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppURL "https://github.com/Les-Doubles-A/YoutubeDownloader"
 
 [Setup]

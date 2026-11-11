@@ -32,6 +32,37 @@
     }
   }
 
+  // Identifiant de la vidéo de la page (watch?v=ID ou /shorts/ID), ou null.
+  function currentPageVideoId() {
+    const fromQuery = getVideoId(location.href);
+    if (fromQuery) return fromQuery;
+    const m = location.pathname.match(/^\/shorts\/([A-Za-z0-9_-]+)/);
+    return m ? m[1] : null;
+  }
+
+  const ARCHIVE_KIND_LABELS = {
+    "video": "vidéo",
+    "video-no-audio": "vidéo sans audio",
+    "video-with-all": "vidéo complète",
+    "audio": "audio"
+  };
+
+  /**
+   * Retire une vidéo (scope "video") ou toutes les vidéos d'une playlist/chaîne (scope
+   * "playlist") de l'archive des vidéos déjà téléchargées. Renvoie la réponse du background.
+   */
+  async function forgetArchive(scope, target) {
+    if (!isExtensionContextValid()) return { ok: false, error: CONTEXT_INVALIDATED_MESSAGE };
+    try {
+      const msg = { action: "forgetArchive", scope };
+      if (scope === "playlist") msg.url = target; else msg.videoId = target;
+      const res = await chrome.runtime.sendMessage(msg);
+      return res || { ok: false, error: "Pas de réponse." };
+    } catch (err) {
+      return { ok: false, error: CONTEXT_INVALIDATED_MESSAGE };
+    }
+  }
+
   function getVideoTitle() {
     const el =
       document.querySelector("h1.ytd-watch-metadata yt-formatted-string") ||
@@ -235,6 +266,7 @@
           <input type="number" id="ytdl-channel-max" min="1" placeholder="toutes" />
         </label>
         <div class="ytdl-hint">Chaque vidéo est rangée dans un dossier au nom de la chaîne. Les vidéos déjà téléchargées sont ignorées si vous relancez.</div>
+        <button type="button" class="ytdl-cancel ytdl-forget-playlist">Retélécharger toute la chaîne</button>
       </div>`;
 
     const playlistSection = channel ? channelSection : data.isPlaylist
@@ -244,10 +276,24 @@
         <label><input type="radio" name="ytdl-playlist" value="single" ${location.pathname === "/playlist" ? "" : "checked"}> Vidéo actuelle</label>
         <label><input type="radio" name="ytdl-playlist" value="full" ${location.pathname === "/playlist" ? "checked" : ""}> Playlist entière</label>
         <label><input type="radio" name="ytdl-playlist" value="fromCurrent"> À partir d'ici</label>
+        <div class="ytdl-hint">La playlist est rangée dans un dossier à son nom. Les vidéos déjà téléchargées sont ignorées : relancer ne récupère que les nouvelles.</div>
+        <button type="button" class="ytdl-cancel ytdl-forget-playlist">Retélécharger toute la playlist</button>
+      </div>`
+      : "";
+
+    // Vidéo seule déjà présente dans l'archive (pas sur une page playlist/chaîne).
+    const pageVideoId = location.pathname === "/playlist" || channel ? null : currentPageVideoId();
+    const archivedKinds = pageVideoId && data.videoId === pageVideoId ? (data.archivedKinds || []) : [];
+    const archivedBanner = archivedKinds.length
+      ? `
+      <div class="ytdl-archived">
+        <span class="ytdl-archived-text">Déjà téléchargée (${escapeHtml(archivedKinds.map((k) => ARCHIVE_KIND_LABELS[k] || k).join(", "))}) : elle sera ignorée.</span>
+        <button type="button" class="ytdl-cancel ytdl-redownload">Retélécharger</button>
       </div>`
       : "";
 
     menu.innerHTML = `
+      ${archivedBanner}
       <div class="ytdl-metadata-option">
         <label>
           <input type="checkbox" id="ytdl-include-metadata" ${includeMetadataDefault ? "checked" : ""} />
@@ -286,13 +332,54 @@
         startDownload(menu, type, quality, playlistMode, includeMetadata);
       });
     });
+
+    const redownloadBtn = menu.querySelector(".ytdl-redownload");
+    if (redownloadBtn) {
+      redownloadBtn.addEventListener("click", async () => {
+        const text = menu.querySelector(".ytdl-archived-text");
+        redownloadBtn.disabled = true;
+        const res = await forgetArchive("video", pageVideoId);
+        if (res.ok) {
+          text.textContent = "Retirée des vidéos téléchargées : choisissez un format pour la retélécharger.";
+          redownloadBtn.remove();
+        } else {
+          text.textContent = `Erreur : ${res.error || "inconnue"}`;
+          redownloadBtn.disabled = false;
+        }
+      });
+    }
+
+    const forgetPlaylistBtn = menu.querySelector(".ytdl-forget-playlist");
+    if (forgetPlaylistBtn) {
+      forgetPlaylistBtn.addEventListener("click", async () => {
+        const what = channel ? "de cette chaîne" : "de cette playlist";
+        if (!window.confirm(`Oublier toutes les vidéos ${what} déjà téléchargées ? Elles seront retéléchargées au prochain téléchargement.`)) {
+          return;
+        }
+        const tabEl = menu.querySelector("#ytdl-channel-tab");
+        const url = channel ? channelTabUrl(tabEl ? tabEl.value : "videos") : currentVideoUrl;
+        const original = forgetPlaylistBtn.textContent;
+        forgetPlaylistBtn.disabled = true;
+        forgetPlaylistBtn.textContent = "Analyse des vidéos…";
+        const res = await forgetArchive("playlist", url);
+        forgetPlaylistBtn.disabled = false;
+        forgetPlaylistBtn.textContent = original;
+        menu.querySelectorAll(".ytdl-forget-result").forEach((el) => el.remove());
+        const hint = document.createElement("div");
+        hint.className = "ytdl-hint ytdl-forget-result";
+        hint.textContent = res.ok
+          ? `${res.data.removed} vidéo(s) retirée(s) sur ${res.data.listed}. Choisissez un format pour tout retélécharger.`
+          : `Erreur : ${res.error || "inconnue"}`;
+        forgetPlaylistBtn.insertAdjacentElement("afterend", hint);
+      });
+    }
   }
 
   function startDownload(menu, downloadType, quality, playlistMode, includeMetadata) {
     const progressWrap = menu.querySelector(".ytdl-progress-wrap");
     const fill = menu.querySelector(".ytdl-progress-fill");
     const label = menu.querySelector(".ytdl-progress-label");
-    const cancelBtn = menu.querySelector(".ytdl-cancel");
+    const cancelBtn = progressWrap.querySelector(".ytdl-cancel");
     progressWrap.style.display = "block";
     label.textContent = "En attente…";
 
@@ -321,50 +408,97 @@
       payload.playlistEnd = maxEl && maxEl.value ? Math.max(1, parseInt(maxEl.value, 10) || 0) : 0;
     }
 
-    chrome.runtime.sendMessage(payload).then((res) => {
-      if (!res || !res.ok) {
-        label.textContent = "Erreur";
+    const oldRedo = progressWrap.querySelector(".ytdl-redo");
+    if (oldRedo) oldRedo.remove();
+
+    // Fin de téléchargement : signale les vidéos ignorées car déjà téléchargées et propose
+    // de les retélécharger (oubli dans l'archive puis relance du même téléchargement).
+    function showCompletion(msg) {
+      const skipped = Number(msg.skipped) || 0;
+      if (skipped === 0) {
+        label.textContent = "Terminé ✓";
         return;
       }
-
-      activeRequestId = res.requestId;
-      const thisRequestId = res.requestId;
-
-      if (cancelBtn) {
-        cancelBtn.style.display = "inline-block";
-        cancelBtn.onclick = () => {
-          cancelBtn.disabled = true;
-          label.textContent = "Annulation…";
-          chrome.runtime.sendMessage({ action: "cancel", requestId: thisRequestId }).catch(() => {});
-        };
+      const isList = payload.playlistMode === "full" || payload.playlistMode === "fromCurrent" || payload.channelMode;
+      const videoId = isList ? null : currentPageVideoId();
+      if (isList) {
+        const total = Math.max(Number(msg.total) || 0, skipped);
+        label.textContent = `Terminé ✓ ${total - skipped} nouvelle(s), ${skipped} déjà téléchargée(s) ignorée(s)`;
+      } else {
+        label.textContent = "Déjà téléchargée : ignorée.";
       }
+      if (!isList && !videoId) return;
 
-      function listener(msg) {
-        if (!msg.requestId || msg.requestId !== thisRequestId) return;
-        if (msg.type === "download-progress") {
-          fill.style.width = `${msg.percent}%`;
-          label.textContent = `${msg.percent}% ${msg.stage ? "- " + msg.stage : ""}`;
-        } else if (msg.type === "download-complete") {
-          fill.style.width = "100%";
-          label.textContent = "Terminé ✓";
-          if (cancelBtn) cancelBtn.style.display = "none";
-          chrome.runtime.onMessage.removeListener(listener);
-        } else if (msg.type === "download-cancelled") {
-          label.textContent = "Annulé";
-          if (cancelBtn) cancelBtn.style.display = "none";
-          chrome.runtime.onMessage.removeListener(listener);
-        } else if (msg.type === "download-error") {
-          label.textContent = `Erreur : ${msg.message}`;
-          if (cancelBtn) cancelBtn.style.display = "none";
-          chrome.runtime.onMessage.removeListener(listener);
+      const redo = document.createElement("button");
+      redo.type = "button";
+      redo.className = "ytdl-cancel ytdl-redo";
+      redo.textContent = isList ? "Retélécharger les ignorées" : "Retélécharger";
+      redo.addEventListener("click", async () => {
+        redo.disabled = true;
+        label.textContent = isList ? "Analyse des vidéos…" : "Préparation…";
+        const res = await forgetArchive(isList ? "playlist" : "video", isList ? payload.url : videoId);
+        if (!res.ok) {
+          label.textContent = `Erreur : ${res.error || "inconnue"}`;
+          redo.disabled = false;
+          return;
         }
-      }
+        redo.remove();
+        fill.style.width = "0%";
+        if (cancelBtn) cancelBtn.disabled = false;
+        sendDownload();
+      });
+      progressWrap.appendChild(redo);
+    }
 
-      chrome.runtime.onMessage.addListener(listener);
-    }).catch(() => {
-      // Contexte invalidé pendant l'envoi (rechargement de l'extension en plein téléchargement).
-      label.textContent = CONTEXT_INVALIDATED_MESSAGE;
-    });
+    sendDownload();
+
+    function sendDownload() {
+      label.textContent = "En attente…";
+      chrome.runtime.sendMessage(payload).then((res) => {
+        if (!res || !res.ok) {
+          label.textContent = "Erreur";
+          return;
+        }
+
+        activeRequestId = res.requestId;
+        const thisRequestId = res.requestId;
+
+        if (cancelBtn) {
+          cancelBtn.style.display = "inline-block";
+          cancelBtn.onclick = () => {
+            cancelBtn.disabled = true;
+            label.textContent = "Annulation…";
+            chrome.runtime.sendMessage({ action: "cancel", requestId: thisRequestId }).catch(() => {});
+          };
+        }
+
+        function listener(msg) {
+          if (!msg.requestId || msg.requestId !== thisRequestId) return;
+          if (msg.type === "download-progress") {
+            fill.style.width = `${msg.percent}%`;
+            label.textContent = `${msg.percent}% ${msg.stage ? "- " + msg.stage : ""}`;
+          } else if (msg.type === "download-complete") {
+            fill.style.width = "100%";
+            if (cancelBtn) cancelBtn.style.display = "none";
+            chrome.runtime.onMessage.removeListener(listener);
+            showCompletion(msg);
+          } else if (msg.type === "download-cancelled") {
+            label.textContent = "Annulé";
+            if (cancelBtn) cancelBtn.style.display = "none";
+            chrome.runtime.onMessage.removeListener(listener);
+          } else if (msg.type === "download-error") {
+            label.textContent = `Erreur : ${msg.message}`;
+            if (cancelBtn) cancelBtn.style.display = "none";
+            chrome.runtime.onMessage.removeListener(listener);
+          }
+        }
+
+        chrome.runtime.onMessage.addListener(listener);
+      }).catch(() => {
+        // Contexte invalidé pendant l'envoi (rechargement de l'extension en plein téléchargement).
+        label.textContent = CONTEXT_INVALIDATED_MESSAGE;
+      });
+    }
   }
 
   function injectButton() {

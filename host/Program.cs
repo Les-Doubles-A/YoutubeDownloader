@@ -68,6 +68,10 @@ namespace DownloaderHost
                             downloadCts.Cancel();
                             break;
 
+                        case "forgetArchive":
+                            await HandleForgetArchiveAsync(root, stdout);
+                            break;
+
                         case "testConfig":
                             await HandleTestConfigAsync(root, stdout);
                             break;
@@ -177,8 +181,51 @@ namespace DownloaderHost
                 type = "formats",
                 title = result.Title,
                 isPlaylist = result.IsPlaylist,
-                availableHeights = result.AvailableHeights
+                availableHeights = result.AvailableHeights,
+                videoId = result.VideoId,
+                archivedKinds = DownloadArchive.KindsContaining(result.VideoId)
             });
+        }
+
+        /// <summary>
+        /// Retire des vidéos de l'archive pour pouvoir les retélécharger : soit une vidéo
+        /// ("videoId"), soit toutes les vidéos d'une playlist/chaîne ("url" + scope "playlist").
+        /// </summary>
+        private static async Task HandleForgetArchiveAsync(JsonElement root, Stream stdout)
+        {
+            string scope = GetString(root, "scope", "video");
+            var ids = new List<string>();
+
+            if (scope == "playlist")
+            {
+                string url = GetString(root, "url");
+                string ytDlpPath = Downloader.ResolveYtDlpPath(GetString(root, "ytDlpPath"));
+                if (string.IsNullOrWhiteSpace(url) || !File.Exists(ytDlpPath))
+                {
+                    NativeMessaging.WriteMessage(stdout, new { type = "error", message = "URL ou yt-dlp manquant." });
+                    return;
+                }
+                List<string>? listed = await Downloader.ListPlaylistIdsAsync(ytDlpPath, url, GetString(root, "cookiesFromBrowser"));
+                if (listed == null)
+                {
+                    NativeMessaging.WriteMessage(stdout, new { type = "error", message = "Impossible de lister les vidéos de cette playlist." });
+                    return;
+                }
+                ids.AddRange(listed);
+            }
+            else
+            {
+                string videoId = GetString(root, "videoId");
+                if (!DownloadArchive.IsValidId(videoId))
+                {
+                    NativeMessaging.WriteMessage(stdout, new { type = "error", message = "Identifiant de vidéo invalide." });
+                    return;
+                }
+                ids.Add(videoId);
+            }
+
+            int removed = DownloadArchive.Remove(ids);
+            NativeMessaging.WriteMessage(stdout, new { type = "archiveForgotten", removed, listed = ids.Count });
         }
 
         private static async Task HandleDownloadAsync(JsonElement root, Stream stdout, CancellationToken ct)
@@ -287,12 +334,19 @@ namespace DownloaderHost
             });
             ct.ThrowIfCancellationRequested();
 
-            string? filePath = await Downloader.DownloadAsync(request, (percent, stage) =>
+            DownloadResult result = await Downloader.DownloadAsync(request, (percent, stage) =>
             {
                 NativeMessaging.WriteMessage(stdout, new { type = "progress", requestId, percent, stage });
             }, ct);
 
-            NativeMessaging.WriteMessage(stdout, new { type = "complete", requestId, filePath = filePath ?? request.OutputDir });
+            NativeMessaging.WriteMessage(stdout, new
+            {
+                type = "complete",
+                requestId,
+                filePath = result.FilePath ?? request.OutputDir,
+                skipped = result.Skipped,
+                total = result.Total
+            });
         }
 
         private static string GetString(JsonElement root, string property, string fallback = "")

@@ -28,7 +28,7 @@ namespace DownloaderHost
         public string FilenameTemplate { get; set; } = "%(title)s.%(ext)s";
         public string PlaylistMode { get; set; } = "single";
 
-        /// <summary>Téléchargement de toute une chaîne : active l'archive de reprise.</summary>
+        /// <summary>Téléchargement de toute une chaîne (sous-dossier par chaîne côté extension).</summary>
         public bool ChannelMode { get; set; } = false;
 
         /// <summary>Nombre maximal d'éléments d'une playlist/chaîne (0 = tous).</summary>
@@ -100,6 +100,21 @@ namespace DownloaderHost
         public string Title { get; set; } = "";
         public bool IsPlaylist { get; set; }
         public List<int> AvailableHeights { get; set; } = new List<int>();
+
+        /// <summary>Identifiant de la vidéo analysée (premier élément pour une playlist).</summary>
+        public string VideoId { get; set; } = "";
+    }
+
+    /// <summary>Résultat d'un téléchargement yt-dlp.</summary>
+    public class DownloadResult
+    {
+        public string? FilePath { get; set; }
+
+        /// <summary>Nombre de vidéos ignorées car déjà présentes dans l'archive.</summary>
+        public int Skipped { get; set; }
+
+        /// <summary>Nombre total d'éléments traités (1 pour une vidéo seule).</summary>
+        public int Total { get; set; }
     }
 
     /// <summary>
@@ -134,6 +149,10 @@ namespace DownloaderHost
 
         private static readonly Regex PlaylistItemRegex = new Regex(
             @"Downloading (?:item|video) (?<cur>\d+) of (?<total>\d+)",
+            RegexOptions.Compiled);
+
+        private static readonly Regex ArchiveSkipRegex = new Regex(
+            @"has already been recorded in the archive",
             RegexOptions.Compiled);
 
         private static readonly int[] ProgressBreakpoints = { 0, 10, 30, 60, 90, 100 };
@@ -517,11 +536,16 @@ namespace DownloaderHost
                     }
                 }
 
+                string videoId = infoElement.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String
+                    ? idEl.GetString() ?? ""
+                    : "";
+
                 return new FormatsResult
                 {
                     Title = title,
                     IsPlaylist = isPlaylist,
-                    AvailableHeights = heights.Distinct().OrderByDescending(h => h).ToList()
+                    AvailableHeights = heights.Distinct().OrderByDescending(h => h).ToList(),
+                    VideoId = videoId
                 };
             }
             catch (JsonException)
@@ -530,13 +554,58 @@ namespace DownloaderHost
             }
         }
 
+        /// <summary>
+        /// Liste les identifiants des vidéos d'une playlist/chaîne sans les analyser une à une
+        /// (--flat-playlist), pour pouvoir les retirer de l'archive. Null en cas d'échec.
+        /// </summary>
+        public static async Task<List<string>?> ListPlaylistIdsAsync(string ytDlpPath, string url, string cookiesFromBrowser, CancellationToken ct = default)
+        {
+            var psi = CreateProcessInfo(ytDlpPath, utf8Output: true);
+            psi.ArgumentList.Add("--flat-playlist");
+            psi.ArgumentList.Add("--yes-playlist");
+            psi.ArgumentList.Add("--no-warnings");
+            psi.ArgumentList.Add("--print");
+            psi.ArgumentList.Add("id");
+            if (!string.IsNullOrWhiteSpace(cookiesFromBrowser) && cookiesFromBrowser != "none")
+            {
+                psi.ArgumentList.Add("--cookies-from-browser");
+                psi.ArgumentList.Add(cookiesFromBrowser);
+            }
+            psi.ArgumentList.Add(url);
+
+            using var process = new Process { StartInfo = psi };
+            var ids = new List<string>();
+            process.OutputDataReceived += (s, e) =>
+            {
+                string? line = e.Data?.Trim();
+                if (line != null && DownloadArchive.IsValidId(line))
+                {
+                    lock (ids) ids.Add(line);
+                }
+            };
+            process.ErrorDataReceived += (s, e) => { };
+
+            StartWithoutStdin(process);
+            using var killRegistration = RegisterKill(process, ct);
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            await process.WaitForExitAsync();
+            ct.ThrowIfCancellationRequested();
+
+            return process.ExitCode == 0 || ids.Count > 0 ? ids : null;
+        }
+
         // ------------------------------------------------------------------
         // Téléchargement
         // ------------------------------------------------------------------
 
-        public static async Task<string?> DownloadAsync(DownloadRequest request, Action<int, string> onProgress, CancellationToken ct = default)
+        public static async Task<DownloadResult> DownloadAsync(DownloadRequest request, Action<int, string> onProgress, CancellationToken ct = default)
         {
             ct.ThrowIfCancellationRequested();
+            if (DownloadArchive.IsTracked(request.DownloadType))
+            {
+                DownloadArchive.MigrateLegacy(request.OutputDir);
+            }
             List<string> args = BuildArguments(request);
 
             var psi = CreateProcessInfo(request.YtDlpPath, utf8Output: true);
@@ -549,12 +618,22 @@ namespace DownloaderHost
             int currentItem = 1;
             int totalItems = 1;
             int lastOverall = -1;
+            int skipped = 0;
 
             onProgress(0, "Démarrage");
 
             process.OutputDataReceived += (s, e) =>
             {
                 if (e.Data == null) return;
+
+                if (ArchiveSkipRegex.IsMatch(e.Data))
+                {
+                    skipped++;
+                    onProgress(Math.Max(lastOverall, 0), totalItems > 1
+                        ? $"Vidéo {currentItem}/{totalItems} déjà téléchargée, ignorée"
+                        : "Déjà téléchargée, ignorée");
+                    return;
+                }
 
                 var itemMatch = PlaylistItemRegex.Match(e.Data);
                 if (itemMatch.Success)
@@ -634,7 +713,7 @@ namespace DownloaderHost
             }
 
             onProgress(100, "Terminé");
-            return lastDestination;
+            return new DownloadResult { FilePath = lastDestination, Skipped = skipped, Total = totalItems };
         }
 
         // ------------------------------------------------------------------
@@ -1178,15 +1257,14 @@ namespace DownloaderHost
                 args.Add(request.PlaylistEnd.ToString());
             }
 
-            if (request.ChannelMode)
+            if (DownloadArchive.IsTracked(request.DownloadType))
             {
-                // Fichier d'archive : permet de relancer un téléchargement interrompu sans
-                // retélécharger les vidéos déjà obtenues (un fichier par type/qualité).
-                string kind = request.DownloadType + "-" +
-                    (request.DownloadType == "audio" ? request.AudioFormat : request.Quality);
-                kind = SanitizeFileName(kind);
+                // Archive globale (voir DownloadArchive) : chaque vidéo téléchargée y est notée,
+                // et celles déjà présentes sont ignorées. Relancer une playlist ou une chaîne ne
+                // récupère donc que les nouvelles vidéos. Un fichier par type de téléchargement,
+                // pour qu'une vidéo déjà prise en audio puisse encore l'être en vidéo.
                 args.Add("--download-archive");
-                args.Add(Path.Combine(request.OutputDir, ".archive-" + kind + ".txt"));
+                args.Add(DownloadArchive.PathFor(request.DownloadType));
             }
 
             switch (request.PlaylistMode)

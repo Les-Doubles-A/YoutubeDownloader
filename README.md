@@ -65,10 +65,28 @@ reellement disponibles :
 Sur une page de chaine (`/@nom`, `/channel/...`, `/c/...`, `/user/...`), un bouton flottant ouvre un
 menu pour telecharger toutes les videos (ou les Shorts, ou les directs termines) en video ou en
 audio, avec une limite optionnelle de nombre. Les fichiers sont ranges dans un dossier au nom de
-la chaine, la progression est globale ("Video 12/340") et un fichier d'archive `.archive-*.txt`
-dans le dossier de telechargement permet de relancer sans retelecharger ce qui existe deja.
-Le telechargement en un clic est ignore sur ces pages. Pour tout retelecharger, supprimez le
-fichier d'archive correspondant.
+la chaine et la progression est globale ("Video 12/340"). Le telechargement en un clic est ignore
+sur ces pages.
+
+### Videos deja telechargees
+
+Chaque video telechargee (video, video sans audio, video complete, audio) est notee dans une
+archive yt-dlp globale : `%LOCALAPPDATA%\YoutubeDownloader\archive\<type>.txt` (un fichier par
+type, pour qu'une video deja prise en audio puisse encore l'etre en video). Les videos deja
+notees sont ignorees : relancer une playlist ou une chaine ne recupere que les nouvelles videos.
+Les playlists entieres (ou "a partir d'ici") sont rangees dans un dossier au nom de la playlist.
+
+Dans le menu de telechargement :
+
+- une video deja telechargee affiche un bandeau avec un bouton **Retelecharger** qui la retire
+  de l'archive ;
+- les sections Playlist et Chaine ont un bouton **Retelecharger toute la playlist / chaine** qui
+  retire toutes ses videos de l'archive ;
+- a la fin d'un telechargement, les videos ignorees sont comptees et un bouton **Retelecharger**
+  (ou **Retelecharger les ignorees**) les retire de l'archive et relance le meme telechargement.
+
+Les anciennes archives `.archive-*.txt` du dossier de telechargement sont reprises
+automatiquement dans l'archive globale puis renommees en `.migrated`.
 
 ### Radio France
 
@@ -133,7 +151,7 @@ erreur reseau, quota depasse, refus 403 (yt-dlp perime ou cookies manquants).
 <!-- installeur-release -->
 ## Installation
 
-Téléchargez **`YoutubeDownloader-Setup-1.1.0.exe`** depuis la [dernière release](https://github.com/Les-Doubles-A/YoutubeDownloader/releases/latest), puis lancez-le.
+Téléchargez **`YoutubeDownloader-Setup-1.2.0.exe`** depuis la [dernière release](https://github.com/Les-Doubles-A/YoutubeDownloader/releases/latest), puis lancez-le.
 
 Prérequis : runtime **.NET 10** (pour l'hôte Windows). À la fin, l'installeur lance l'assistant de configuration (chargement de l'extension, identifiant, enregistrement de l'hôte pour Chrome et Edge) décrit dans `INSTALLATION.md`.
 
